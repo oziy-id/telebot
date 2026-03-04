@@ -5,10 +5,17 @@ import os
 import glob
 import requests 
 import threading
-from flask import Flask # Tambahan untuk ngakalin server Render
+from flask import Flask
 
-# TOKEN BOT OZI (soc_download_bot)
-TOKEN = '8622757449:AAGe9pCHqa-PM3SVNZNyJblXzj_h7WLZp60'
+# ==========================================
+# 🔒 SISTEM KEAMANAN TOKEN (ANTI-HACK)
+# ==========================================
+# Kode ini akan mengambil token dari 'Secrets' Replit.
+# Jika tidak ditemukan, ia akan menggunakan token manual (hanya untuk lokal).
+TOKEN = os.environ.get('BOT_TOKEN') 
+if not TOKEN:
+    TOKEN = '8622757449:AAGe9pCHqa-PM3SVNZNyJblXzj_h7WLZp60'
+
 bot = telebot.TeleBot(TOKEN)
 
 DOWNLOAD_DIR = 'downloads'
@@ -18,7 +25,6 @@ if not os.path.exists(DOWNLOAD_DIR):
 user_links = {}
 upload_events = {} 
 
-# --- FUNGSI TIMER LIVE ---
 def update_timer(chat_id, msg_id):
     event = upload_events.get(msg_id)
     if not event: return
@@ -55,7 +61,6 @@ def handle_message(message):
     if 'youtu.be/' in url: url = url.split('?')[0]
     elif 'youtube.com/watch' in url: url = url.split('&si=')[0]
 
-    # --- 1. YOUTUBE MODULE ---
     if 'youtube.com' in url or 'youtu.be' in url:
         msg = bot.reply_to(message, "⏳ *Fetching media details...*", parse_mode='Markdown')
         try:
@@ -78,12 +83,11 @@ def handle_message(message):
                 bot.send_message(message.chat.id, caption, reply_markup=markup, parse_mode='Markdown')
             bot.delete_message(message.chat.id, msg.message_id) 
         except Exception as e:
-            bot.edit_message_text("❌ Failed to fetch YouTube info. The server might be busy.", chat_id=message.chat.id, message_id=msg.message_id)
+            bot.edit_message_text("❌ Failed to fetch YouTube info.", chat_id=message.chat.id, message_id=msg.message_id)
 
-    # --- 2. TWITTER MODULE ---
     elif 'twitter.com' in url or 'x.com' in url:
         msg = bot.reply_to(message, "⏳ *Processing X (Twitter) link...*", parse_mode='Markdown')
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         bersih_url = url.split('?')[0]
         direct_mp4 = None
         tweet_text = "X (Twitter) Video"
@@ -122,7 +126,7 @@ def handle_message(message):
                 if os.path.getsize(vid_path) > 48 * 1024 * 1024:
                     markup = InlineKeyboardMarkup()
                     markup.add(InlineKeyboardButton("🌐 View on Web", url=direct_mp4))
-                    pesan_evakuasi = "⚠️ *File is too large (>50MB)*\nTelegram restricts uploading large files directly to this chat.\n\n👇 *Please click the button below to download or view the video on your browser:*"
+                    pesan_evakuasi = "⚠️ *File is too large (>50MB)*\n👇 *Click below:*"
                     bot.edit_message_text(pesan_evakuasi, chat_id=message.chat.id, message_id=msg.message_id, parse_mode='Markdown', reply_markup=markup)
                 else:
                     bot.edit_message_text("✅ Media extracted!\n🚀 Uploading to chat... 0s ⏳", chat_id=message.chat.id, message_id=msg.message_id)
@@ -132,7 +136,6 @@ def handle_message(message):
 
                     with open(vid_path, 'rb') as video_file:
                         caption = f"🎬 *{tweet_text}*"
-                        bot.send_chat_action(message.chat.id, 'upload_video') 
                         bot.send_video(message.chat.id, video=video_file, caption=caption, parse_mode='Markdown', supports_streaming=True)
                     
                     upload_events[msg.message_id].set()
@@ -142,15 +145,14 @@ def handle_message(message):
                     send_donation_message(message.chat.id)
             except Exception as e:
                 if msg.message_id in upload_events: upload_events[msg.message_id].set()
-                bot.edit_message_text("❌ Failed to process X (Twitter) media.", chat_id=message.chat.id, message_id=msg.message_id)
+                bot.edit_message_text("❌ Failed to process X.", chat_id=message.chat.id, message_id=msg.message_id)
             finally:
                 if os.path.exists(vid_path): os.remove(vid_path)
         else:
-            bot.edit_message_text("❌ Failed to fetch media. Ensure the account is not private.", chat_id=message.chat.id, message_id=msg.message_id)
+            bot.edit_message_text("❌ Media not found.", chat_id=message.chat.id, message_id=msg.message_id)
 
-    # --- 3. GENERAL MODULE ---
     else:
-        msg = bot.reply_to(message, "⏳ *Extracting media... Please wait.*", parse_mode='Markdown')
+        msg = bot.reply_to(message, "⏳ *Extracting media...*", parse_mode='Markdown')
         proses_unduhan(message.chat.id, url, 'best', msg.message_id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('yt|'))
@@ -158,17 +160,18 @@ def handle_query(call):
     chat_id = call.message.chat.id
     url = user_links.get(chat_id)
     if not url:
-        bot.answer_callback_query(call.id, "⚠️ Link has expired. Please send the URL again!")
+        bot.answer_callback_query(call.id, "⚠️ Link expired.")
         return
-    bot.answer_callback_query(call.id, "Processing your request...")
+    bot.answer_callback_query(call.id, "Processing...")
     format_choice = call.data.split('|')[1] 
-    msg = bot.send_message(chat_id, f"⏳ *Processing {format_choice.upper()} format... Please wait!*", parse_mode='Markdown')
+    msg = bot.send_message(chat_id, f"⏳ *Processing {format_choice.upper()}...*", parse_mode='Markdown')
     proses_unduhan(chat_id, url, format_choice, msg.message_id)
 
+# --- UPDATE LINK SAWERIA FIX OZIY77 ---
 def send_donation_message(chat_id):
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("☕ Donate on Saweria", url="https://saweria.co/oziyid"))
-    donate_text = "✨ *Media downloaded successfully!*\n\nIf you find this bot helpful, a little support goes a long way in keeping our servers running fast and ad-free."
+    markup.add(InlineKeyboardButton("☕ Donate on Saweria", url="https://saweria.co/oziy77"))
+    donate_text = "✨ *Media downloaded successfully!*\n\nIf you find this bot helpful, support keeping our servers running fast."
     bot.send_message(chat_id, donate_text, reply_markup=markup, parse_mode='Markdown')
 
 def proses_unduhan(chat_id, url, format_choice, msg_id, custom_title=None):
@@ -192,8 +195,7 @@ def proses_unduhan(chat_id, url, format_choice, msg_id, custom_title=None):
         if os.path.getsize(filename) > 48 * 1024 * 1024:
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("🌐 View on Web", url=direct_url_fallback))
-            pesan_evakuasi = "⚠️ *File is too large (>50MB)*\nTelegram restricts uploading large files directly to this chat.\n\n👇 *Please click the button below to download or view the video on your browser:*"
-            bot.edit_message_text(pesan_evakuasi, chat_id=chat_id, message_id=msg_id, parse_mode='Markdown', reply_markup=markup)
+            bot.edit_message_text("⚠️ *Too large (>50MB)*", chat_id=chat_id, message_id=msg_id, parse_mode='Markdown', reply_markup=markup)
             return
 
         bot.edit_message_text("✅ Media extracted!\n🚀 Uploading to chat... 0s ⏳", chat_id=chat_id, message_id=msg_id)
@@ -219,34 +221,20 @@ def proses_unduhan(chat_id, url, format_choice, msg_id, custom_title=None):
 
     except Exception as e:
         if msg_id in upload_events: upload_events[msg_id].set()
-        error_text = str(e).lower()
-        if "bot" in error_text or "sign in" in error_text: pesan_error = "❌ Server is currently rate-limited by YouTube. Please try again later."
-        else: pesan_error = "❌ Failed to fetch media. Ensure the link is public."
-        bot.edit_message_text(pesan_error, chat_id=chat_id, message_id=msg_id)
+        bot.edit_message_text("❌ Failed to fetch media.", chat_id=chat_id, message_id=msg_id)
     finally:
         if filename and os.path.exists(filename): os.remove(filename)
 
-# ==========================================
-# WEB SERVER PALSU UNTUK MENGAKALI RENDER 
-# ==========================================
 app = Flask(__name__)
-
 @app.route('/')
 def keep_alive():
-    return "Bot Telegram Ozi sedang berjalan 24/7!"
+    return "Bot Telegram Ozi is running!"
 
 def run_server():
-    port = int(os.environ.get("PORT", 10000)) # Port dinamis untuk Render
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
-    print("==================================================")
-    print("🤖 Bot [soc_download_bot] SEDANG DIHIDUPKAN...")
-    print("==================================================")
-    
-    # 1. Jalankan Web Server Palsu di latar belakang
     server_thread = threading.Thread(target=run_server)
     server_thread.start()
-    
-    # 2. Jalankan Bot Telegram
     bot.infinity_polling(timeout=10, long_polling_timeout=5)
